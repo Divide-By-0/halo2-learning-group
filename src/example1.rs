@@ -3,10 +3,11 @@ use halo2_proofs::{
     circuit::*,
     plonk::*,
     poly::Rotation,
-}
+    pasta::Fp, dev::MockProver,
+};
 
 #[derive(Clone, Debug)]
-struct ACell<F: FieldExt>
+struct ACell<F: FieldExt>(AssignedCell<F, F>);
 #[derive(Clone, Debug)]
 struct FibonacciConfig {
     pub advice: [Column<Advice>; 3],
@@ -30,7 +31,6 @@ impl<F: FieldExt> FibonacciChip<F> {
         meta: &mut ConstraintSystem<F>,
         advice: [Column<Advice>; 3],
     ) -> FibonacciConfig {
-        let (col_a, col_b, col_c) = advice[0];
         let col_a = advice[0];
         let col_b = advice[1];
         let col_c = advice[2];
@@ -57,58 +57,66 @@ impl<F: FieldExt> FibonacciChip<F> {
         mut layouter: impl Layouter<F>,
         a: Option<F>,
         b: Option<F>,
-    ) {
+    ) -> Result<(ACell<F>, ACell<F>, ACell<F>), Error> {
         layouter.assign_region(
-            || "First row",
+            || "first row",
             |mut region| {
-                self.config.selector.enable(&mut region, 0);
+                self.config.selector.enable(&mut region, 0)?;
                 let a_cell = region.assign_advice(
                     || "a",
                     self.config.advice[0],
                     0,
-                    || a.or_then(Error::Synthesis),
-                )?;
-                let offset = 0;
-                self.assign_region(&mut region, offset, a, b)
+                    || a.ok_or(Error::Synthesis),
+                ).map(ACell)?;
+                let b_cell = region.assign_advice(
+                    || "b",
+                    self.config.advice[1],
+                    0,
+                    || b.ok_or(Error::Synthesis),
+                ).map(ACell)?;
+                let c_val = a.and_then(|a| b.map(|b| a + b));
+
+                let c_cell = region.assign_advice(
+                    || "c",
+                    self.config.advice[2],
+                    0,
+                    || c_val.ok_or(Error::Synthesis),
+                ).map(ACell)?;
+                Ok((a_cell, b_cell, c_cell))
+
+                // let offset = 0;
+                // self.assign_region(&mut region, offset, a, b)
             },
         )
     }
 
-    fn assign(
+    fn assign_row(
         &self,
-        region: &mut Region<'_, F>,
-        offset: usize,
-        a: Option<F>,
-        b: Option<F>,
-    ) -> Result<(Option<F>, Option<F>), Error> {
-        let config = self.config();
-
-        region.assign_advice(
-            || "a",
-            config.advice[0],
-            offset,
-            || a.ok_or(Error::SynthesisError),
-        )?;
-        region.assign_advice(
-            || "b",
-            config.advice[1],
-            offset,
-            || b.ok_or(Error::SynthesisError),
-        )?;
-        region.assign_advice(
-            || "c",
-            config.advice[2],
-            offset,
-            || {
-                let a = a.ok_or(Error::SynthesisError)?;
-                let b = b.ok_or(Error::SynthesisError)?;
-                Ok(a * b)
-            },
-        )?;
-
-        region.assign_fixed(|| "selector", config.selector, offset, || Ok(F::one()))?;
-
-        Ok((b, a.map(|a| a * b)))
+        mut layouter: impl Layouter<F>,
+        prev_b: &ACell<F>,
+        prev_c: &ACell<F>,
+        // region: &mut Region<'_, F>,
+        // offset: usize,
+        // a: Option<F>,
+        // b: Option<F>,
+    ) -> Result<ACell<F>, Error> {
+        layouter.assign_region(
+            || "next row",
+            |mut region| {
+                self.config.selector.enable(&mut region, 0)?;
+                prev_b.0.copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
+                prev_c.0.copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
+                let c_val = prev_b.0.value().and_then(
+                    |b| prev_c.0.value().map(|c| *b + *c)
+                );
+                let c_cell = region.assign_advice(
+                    || "c",
+                    self.config.advice[2],
+                    0,
+                    || c_val.ok_or(Error::Synthesis)).map(ACell);
+                Ok(c_cell)
+            }
+        )?
     }
 }
 
@@ -130,25 +138,27 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         let col_a: Column<Advice> = meta.advice_column();
         let col_b: Column<Advice> = meta.advice_column();
         let col_c: Column<Advice> = meta.advice_column();
-        FibonacciChip::configure(meta, [col_a, col_b, col_c]);
+        FibonacciChip::configure(meta, [col_a, col_b, col_c])
     }
 
     fn synthesize(
         &self,
         config: Self::Config,
-        region: &mut Region<'_, F>,
+        mut layouter: impl Layouter<F>,
+        // region: &mut Region<'_, F>,
     ) -> Result<(), Error> {
         let chip = FibonacciChip::construct(config);
-        chip.assign_first_row(layouter.namespace(|| "first row"), self.a, self.b); // 2 private inputs
-        let mut offset = 0;
-        let mut a = self.a;
-        let mut b = self.b;
+        let (_, mut prev_b, mut prev_c) = chip.assign_first_row(
+            layouter.namespace(|| "first row"),
+            self.a, self.b)?; // 2 private inputs
 
-        for _ in 0..10 {
-            let (new_a, new_b) = chip.assign(region, offset, a, b)?;
-            a = new_a;
-            b = new_b;
-            offset += 1;
+        for _i in 3..10 {
+            let c_cell = chip.assign_row(
+                layouter.namespace(|| "next row"),
+                &prev_b,
+                &prev_c)?;
+            prev_b = prev_c;
+            prev_c = c_cell;
         }
 
         Ok(())
@@ -157,5 +167,12 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
 
 
 fn main() {
-    println!("Hello, world!");
+    let k = 4;
+    let a = Fp::from(1);
+    let b = Fp::from(1);
+    let circuit = FibonacciCircuit {
+        a:Some(a), b:Some(b)
+    };
+    let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+    prover.assert_satisfied();
 }
