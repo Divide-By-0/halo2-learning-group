@@ -107,7 +107,7 @@ impl<F: FieldExt> FibonacciChip<F> {
                 prev_b.0.copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
                 prev_c.0.copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
                 let c_val = prev_b.0.value().and_then(
-                    |b| prev_c.0.value().map(|c| *b + *c)
+                    |b| prev_c.0.value().map(|c| *b + *c + *b)
                 );
                 let c_cell = region.assign_advice(
                     || "c",
