@@ -1,9 +1,5 @@
 use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::*,
-    plonk::*,
-    poly::Rotation,
-    pasta::Fp, dev::MockProver,
+    arithmetic::FieldExt, circuit::*, dev::MockProver, pasta::Fp, plonk::*, poly::Rotation,
 };
 
 #[derive(Clone, Debug)]
@@ -36,10 +32,7 @@ impl<F: FieldExt> FibonacciChip<F> {
     }
 
     // Configure will set what type of columns things are, enable equality, create gates, and return a config with all the gates
-    fn configure(
-        meta: &mut ConstraintSystem<F>,
-        advice: [Column<Advice>; 3],
-    ) -> FibonacciConfig {
+    fn configure(meta: &mut ConstraintSystem<F>, advice: [Column<Advice>; 3]) -> FibonacciConfig {
         let col_a = advice[0];
         let col_b = advice[1];
         let col_c = advice[2];
@@ -63,7 +56,10 @@ impl<F: FieldExt> FibonacciChip<F> {
             vec![s * (a + b - c)]
         });
 
-        FibonacciConfig { advice: [col_a, col_b, col_c], selector }
+        FibonacciConfig {
+            advice: [col_a, col_b, col_c],
+            selector,
+        }
     }
 
     // These assign functions are to be called by the synthesizer, and will be used to assign values to the columns (the witness)
@@ -79,26 +75,32 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "first row",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
-                let a_cell = region.assign_advice(
-                    || "a",
-                    self.config.advice[0],
-                    0,
-                    || a.ok_or(Error::Synthesis),
-                ).map(ACell)?;
-                let b_cell = region.assign_advice(
-                    || "b",
-                    self.config.advice[1],
-                    0,
-                    || b.ok_or(Error::Synthesis),
-                ).map(ACell)?;
+                let a_cell = region
+                    .assign_advice(
+                        || "a",
+                        self.config.advice[0],
+                        0,
+                        || a.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
+                let b_cell = region
+                    .assign_advice(
+                        || "b",
+                        self.config.advice[1],
+                        0,
+                        || b.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
                 let c_val = a.and_then(|a| b.map(|b| a + b));
 
-                let c_cell = region.assign_advice(
-                    || "c",
-                    self.config.advice[2],
-                    0,
-                    || c_val.ok_or(Error::Synthesis),
-                ).map(ACell)?;
+                let c_cell = region
+                    .assign_advice(
+                        || "c",
+                        self.config.advice[2],
+                        0,
+                        || c_val.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
                 Ok((a_cell, b_cell, c_cell))
             },
         )
@@ -115,18 +117,26 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "next row",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
-                prev_b.0.copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
-                prev_c.0.copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
-                let c_val = prev_b.0.value().and_then(
-                    |b| prev_c.0.value().map(|c| *b + *c)
-                );
-                let c_cell = region.assign_advice(
-                    || "c",
-                    self.config.advice[2],
-                    0,
-                    || c_val.ok_or(Error::Synthesis)).map(ACell);
+                prev_b
+                    .0
+                    .copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
+                prev_c
+                    .0
+                    .copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
+                let c_val = prev_b
+                    .0
+                    .value()
+                    .and_then(|b| prev_c.0.value().map(|c| *b + *c));
+                let c_cell = region
+                    .assign_advice(
+                        || "c",
+                        self.config.advice[2],
+                        0,
+                        || c_val.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell);
                 Ok(c_cell)
-            }
+            },
         )?
     }
 }
@@ -166,15 +176,11 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         // region: &mut Region<'_, F>,
     ) -> Result<(), Error> {
         let chip = FibonacciChip::construct(config);
-        let (_, mut prev_b, mut prev_c) = chip.assign_first_row(
-            layouter.namespace(|| "first row"),
-            self.a, self.b)?; // 2 private inputs
+        let (_, mut prev_b, mut prev_c) =
+            chip.assign_first_row(layouter.namespace(|| "first row"), self.a, self.b)?; // 2 private inputs
 
         for _i in 3..10 {
-            let c_cell = chip.assign_row(
-                layouter.namespace(|| "next row"),
-                &prev_b,
-                &prev_c)?;
+            let c_cell = chip.assign_row(layouter.namespace(|| "next row"), &prev_b, &prev_c)?;
             prev_b = prev_c;
             prev_c = c_cell;
         }
@@ -183,16 +189,33 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
     }
 }
 
+mod tests {
+    use super::*;
+    #[cfg(feature = "dev-graph")]
+    #[test]
+    fn print() {
+        // fn main() {
+        let k = 4;
+        let a = Fp::from(1);
+        let b = Fp::from(1);
+        let circuit = FibonacciCircuit {
+            a: Some(a),
+            b: Some(b),
+        };
+        // This prover is faster and 'fake', but is mostly a devtool for debugging
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        // This function will pretty-print on errors
+        prover.assert_satisfied();
+        // }
 
-fn main() {
-    let k = 4;
-    let a = Fp::from(1);
-    let b = Fp::from(1);
-    let circuit = FibonacciCircuit {
-        a:Some(a), b:Some(b)
-    };
-    // This prover is faster and 'fake', but is mostly a devtool for debugging
-    let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    // This function will pretty-print on errors
-    prover.assert_satisfied();
+        use plotters::prelude::*;
+
+        let root = BitMapBackend::new("fib-1—layout.png", (1024, 7680)).into_drawing_area();
+        //root.fiti(&WHITE).unwrap();
+        let root1 = root.titled("Fib 1 Layout", ("sans—serif", 60)).unwrap();
+        let circuit: FibonacciCircuit<Fp> = FibonacciCircuit { a: None, b: None };
+        halo2_proofs::dev::CircuitLayout::default()
+            .render(4, &circuit, &root1)
+            .unwrap();
+    }
 }
