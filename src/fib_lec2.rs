@@ -15,6 +15,7 @@ struct ACell<F: FieldExt>(AssignedCell<F, F>);
 struct FibonacciConfig {
     pub advice: [Column<Advice>; 3],
     pub selector: Selector,
+    pub instance: [Column<Instance>; 1],
 }
 
 struct FibonacciChip<F: FieldExt> {
@@ -39,16 +40,18 @@ impl<F: FieldExt> FibonacciChip<F> {
     fn configure(
         meta: &mut ConstraintSystem<F>,
         advice: [Column<Advice>; 3],
+        instance: [Column<Instance>; 1],
     ) -> FibonacciConfig {
         let col_a = advice[0];
         let col_b = advice[1];
         let col_c = advice[2];
+        let selector: Selector = meta.selector();
 
         // enable_equality has some cost, so we only want to define it on rows where we need copy constraints
         meta.enable_equality(col_a);
         meta.enable_equality(col_b);
         meta.enable_equality(col_c);
-        let selector: Selector = meta.selector();
+        meta.enable_equality(instance[0]);
 
         // Defining a create_gate here applies it over every single column in the circuit
         meta.create_gate("Fibonacci", |meta| {
@@ -63,7 +66,7 @@ impl<F: FieldExt> FibonacciChip<F> {
             vec![s * (a + b - c)]
         });
 
-        FibonacciConfig { advice: [col_a, col_b, col_c], selector }
+        FibonacciConfig { advice: [col_a, col_b, col_c], selector, instance }
     }
 
     // These assign functions are to be called by the synthesizer, and will be used to assign values to the columns (the witness)
@@ -79,6 +82,7 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "first row",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
+                let a_cell = region.assign_advice_from_instance(|| "1", self.config.instance[0], 0, self.config.advice[0], 0);
                 let a_cell = region.assign_advice(
                     || "a",
                     self.config.advice[0],
@@ -129,6 +133,12 @@ impl<F: FieldExt> FibonacciChip<F> {
             }
         )?
     }
+
+    pub fn expose_public(&self, mut layouter: impl Layouter<F>, cell: &ACell<F>, row: usize){
+        layouter.constrain_instance(
+            cell.0.cell(), self.config.instance[0], row
+        );
+    }
 }
 
 #[derive(Default)]
@@ -153,7 +163,8 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         let col_a: Column<Advice> = meta.advice_column();
         let col_b: Column<Advice> = meta.advice_column();
         let col_c: Column<Advice> = meta.advice_column();
-        FibonacciChip::configure(meta, [col_a, col_b, col_c])
+        let instance = meta.instance_column();
+        FibonacciChip::configure(meta, [col_a, col_b, col_c], [instance])
     }
 
     // Take the output of configure and floorplanner type to make the actual circuit
@@ -166,10 +177,13 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         // region: &mut Region<'_, F>,
     ) -> Result<(), Error> {
         let chip = FibonacciChip::construct(config);
-        let (_, mut prev_b, mut prev_c) = chip.assign_first_row(
+        let (mut prev_a, mut prev_b, mut prev_c) = chip.assign_first_row(
             layouter.namespace(|| "first row"),
-            self.a, self.b)?; // 2 private inputs
+            self.a, self.b
+        )?; // 2 private inputs
 
+        chip.expose_public(layouter.namespace(|| "private a"), &prev_a, 0);
+        chip.expose_public(layouter.namespace(|| "private b"), &prev_b, 0);
         for _i in 3..10 {
             let c_cell = chip.assign_row(
                 layouter.namespace(|| "next row"),
@@ -178,7 +192,7 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
             prev_b = prev_c;
             prev_c = c_cell;
         }
-
+        chip.expose_public(layouter.namespace(|| "out"), &prev_c, 2); // Why is row 2 instead of 10?
         Ok(())
     }
 }
@@ -188,6 +202,7 @@ fn main() {
     let k = 4;
     let a = Fp::from(1);
     let b = Fp::from(1);
+    let out = Fp::from(55);
     let circuit = FibonacciCircuit {
         a:Some(a), b:Some(b)
     };
