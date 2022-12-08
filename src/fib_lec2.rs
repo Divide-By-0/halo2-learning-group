@@ -82,7 +82,7 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "first row",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
-                let a_cell = region.assign_advice_from_instance(|| "1", self.config.instance[0], 0, self.config.advice[0], 0);
+                // let a_cell = region.assign_advice_from_instance(|| "1", self.config.instance[0], 0, self.config.advice[0], 0);
                 let a_cell = region.assign_advice(
                     || "a",
                     self.config.advice[0],
@@ -182,8 +182,9 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
             self.a, self.b
         )?; // 2 private inputs
 
+        // Define the copy constraint from the instance column to our relevant advice cell
         chip.expose_public(layouter.namespace(|| "private a"), &prev_a, 0);
-        chip.expose_public(layouter.namespace(|| "private b"), &prev_b, 0);
+        chip.expose_public(layouter.namespace(|| "private b"), &prev_b, 1);
         for _i in 3..10 {
             let c_cell = chip.assign_row(
                 layouter.namespace(|| "next row"),
@@ -192,6 +193,7 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
             prev_b = prev_c;
             prev_c = c_cell;
         }
+        // Define the copy constraint from the instance column to our relevant advice cell
         chip.expose_public(layouter.namespace(|| "out"), &prev_c, 2); // Why is row 2 instead of 10?
         Ok(())
     }
@@ -206,8 +208,12 @@ fn main() {
     let circuit = FibonacciCircuit {
         a:Some(a), b:Some(b)
     };
+    let mut public_inputs = vec![a, b, out];
     // This prover is faster and 'fake', but is mostly a devtool for debugging
-    let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
     // This function will pretty-print on errors
     prover.assert_satisfied();
+    public_inputs[2] += Fp::one();
+    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    // prover.assert_satisfied();
 }
