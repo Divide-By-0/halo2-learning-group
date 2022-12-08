@@ -81,6 +81,7 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "entire table",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
+                self.config.selector.enable(&mut region, 1)?;
                 let a_cell: ACell<F> = ACell::<F>(region.assign_advice_from_instance(|| "a", self.config.instance[0], 0, self.config.advice[0], 0)?);
                 let b_cell: ACell<F> = ACell::<F>(region.assign_advice_from_instance(|| "b", self.config.instance[0], 1, self.config.advice[0], 1)?);
                 // let a_cell = region.assign_advice(
