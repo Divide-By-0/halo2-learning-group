@@ -1,9 +1,7 @@
+// We will add instance columns to our lec1 code to have public inputs
+
 use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::*,
-    plonk::*,
-    poly::Rotation,
-    pasta::Fp, dev::MockProver,
+    arithmetic::FieldExt, circuit::*, dev::MockProver, pasta::Fp, plonk::*, poly::Rotation,
 };
 
 #[derive(Clone, Debug)]
@@ -66,7 +64,11 @@ impl<F: FieldExt> FibonacciChip<F> {
             vec![s * (a + b - c)]
         });
 
-        FibonacciConfig { advice: [col_a, col_b, col_c], selector, instance }
+        FibonacciConfig {
+            advice: [col_a, col_b, col_c],
+            selector,
+            instance,
+        }
     }
 
     // These assign functions are to be called by the synthesizer, and will be used to assign values to the columns (the witness)
@@ -83,26 +85,32 @@ impl<F: FieldExt> FibonacciChip<F> {
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
                 // let a_cell = region.assign_advice_from_instance(|| "1", self.config.instance[0], 0, self.config.advice[0], 0);
-                let a_cell = region.assign_advice(
-                    || "a",
-                    self.config.advice[0],
-                    0,
-                    || a.ok_or(Error::Synthesis),
-                ).map(ACell)?;
-                let b_cell = region.assign_advice(
-                    || "b",
-                    self.config.advice[1],
-                    0,
-                    || b.ok_or(Error::Synthesis),
-                ).map(ACell)?;
+                let a_cell = region
+                    .assign_advice(
+                        || "a",
+                        self.config.advice[0],
+                        0,
+                        || a.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
+                let b_cell = region
+                    .assign_advice(
+                        || "b",
+                        self.config.advice[1],
+                        0,
+                        || b.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
                 let c_val = a.and_then(|a| b.map(|b| a + b));
 
-                let c_cell = region.assign_advice(
-                    || "c",
-                    self.config.advice[2],
-                    0,
-                    || c_val.ok_or(Error::Synthesis),
-                ).map(ACell)?;
+                let c_cell = region
+                    .assign_advice(
+                        || "c",
+                        self.config.advice[2],
+                        0,
+                        || c_val.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell)?;
                 Ok((a_cell, b_cell, c_cell))
             },
         )
@@ -119,25 +127,31 @@ impl<F: FieldExt> FibonacciChip<F> {
             || "next row",
             |mut region| {
                 self.config.selector.enable(&mut region, 0)?;
-                prev_b.0.copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
-                prev_c.0.copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
-                let c_val = prev_b.0.value().and_then(
-                    |b| prev_c.0.value().map(|c| *b + *c)
-                );
-                let c_cell = region.assign_advice(
-                    || "c",
-                    self.config.advice[2],
-                    0,
-                    || c_val.ok_or(Error::Synthesis)).map(ACell);
+                prev_b
+                    .0
+                    .copy_advice(|| "a", &mut region, self.config.advice[0], 0)?;
+                prev_c
+                    .0
+                    .copy_advice(|| "b", &mut region, self.config.advice[1], 0)?;
+                let c_val = prev_b
+                    .0
+                    .value()
+                    .and_then(|b| prev_c.0.value().map(|c| *b + *c));
+                let c_cell = region
+                    .assign_advice(
+                        || "c",
+                        self.config.advice[2],
+                        0,
+                        || c_val.ok_or(Error::Synthesis),
+                    )
+                    .map(ACell);
                 Ok(c_cell)
-            }
+            },
         )?
     }
 
-    pub fn expose_public(&self, mut layouter: impl Layouter<F>, cell: &ACell<F>, row: usize){
-        layouter.constrain_instance(
-            cell.0.cell(), self.config.instance[0], row
-        );
+    pub fn expose_public(&self, mut layouter: impl Layouter<F>, cell: &ACell<F>, row: usize) {
+        layouter.constrain_instance(cell.0.cell(), self.config.instance[0], row);
     }
 }
 
@@ -177,19 +191,14 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         // region: &mut Region<'_, F>,
     ) -> Result<(), Error> {
         let chip = FibonacciChip::construct(config);
-        let (mut prev_a, mut prev_b, mut prev_c) = chip.assign_first_row(
-            layouter.namespace(|| "first row"),
-            self.a, self.b
-        )?; // 2 private inputs
+        let (mut prev_a, mut prev_b, mut prev_c) =
+            chip.assign_first_row(layouter.namespace(|| "first row"), self.a, self.b)?; // 2 private inputs
 
         // Define the copy constraint from the instance column to our relevant advice cell
         chip.expose_public(layouter.namespace(|| "private a"), &prev_a, 0);
         chip.expose_public(layouter.namespace(|| "private b"), &prev_b, 1);
         for _i in 3..10 {
-            let c_cell = chip.assign_row(
-                layouter.namespace(|| "next row"),
-                &prev_b,
-                &prev_c)?;
+            let c_cell = chip.assign_row(layouter.namespace(|| "next row"), &prev_b, &prev_c)?;
             prev_b = prev_c;
             prev_c = c_cell;
         }
@@ -199,14 +208,14 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
     }
 }
 
-
 fn main() {
     let k = 4;
     let a = Fp::from(1);
     let b = Fp::from(1);
     let out = Fp::from(55);
     let circuit = FibonacciCircuit {
-        a:Some(a), b:Some(b)
+        a: Some(a),
+        b: Some(b),
     };
     let mut public_inputs = vec![a, b, out];
     // This prover is faster and 'fake', but is mostly a devtool for debugging

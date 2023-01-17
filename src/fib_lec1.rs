@@ -32,6 +32,8 @@ impl<F: FieldExt> FibonacciChip<F> {
     }
 
     // Configure will set what type of columns things are, enable equality, create gates, and return a config with all the gates
+    // We pass in the advice column here because it is often shared across configs
+    // (in this case we have only one, but if we composed subcircuits, we'd have many)
     fn configure(meta: &mut ConstraintSystem<F>, advice: [Column<Advice>; 3]) -> FibonacciConfig {
         let col_a = advice[0];
         let col_b = advice[1];
