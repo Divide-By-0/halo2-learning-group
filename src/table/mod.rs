@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
+use ff::{Field, PrimeField};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error, TableColumn},
 };
@@ -14,13 +14,13 @@ struct Sizes {
 
 /// A lookup table of values from 0..RANGE.
 #[derive(Debug, Clone)]
-pub(super) struct RangeTableConfig<F: FieldExt, const RANGE: usize> {
+pub(super) struct RangeTableConfig<F: PrimeField, const RANGE: usize> {
     pub(super) value: TableColumn,
     pub(super) num_bits: TableColumn,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt, const RANGE: usize> RangeTableConfig<F, RANGE> {
+impl<F: PrimeField, const RANGE: usize> RangeTableConfig<F, RANGE> {
     pub(super) fn configure(meta: &mut ConstraintSystem<F>) -> Self {
         let value = meta.lookup_table_column();
         let num_bits = meta.lookup_table_column();
@@ -43,7 +43,7 @@ impl<F: FieldExt, const RANGE: usize> RangeTableConfig<F, RANGE> {
                         || "value",
                         self.value,
                         offset,
-                        || Value::known(F::from(value as u64)),
+                        || Value::known(F::from_u128(value as u128)),
                     )?;
                     offset += 1;
                 }

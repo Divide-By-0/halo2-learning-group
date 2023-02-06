@@ -1,6 +1,6 @@
-use halo2_proofs::{
-    arithmetic::FieldExt, circuit::*, dev::MockProver, pasta::Fp, plonk::*, poly::Rotation,
-};
+use ff::{Field, PrimeField};
+
+use halo2_proofs::{circuit::*, dev::MockProver, pasta::Fp, plonk::*, poly::Rotation};
 use std::marker::PhantomData;
 
 use halo2_proofs::{
@@ -17,13 +17,13 @@ struct Sizes {
 }
 #[derive(Clone, Copy, Debug)]
 
-struct RangeCheckConfig<F: FieldExt, const RANGE: usize> {
+struct RangeCheckConfig<F: PrimeField, const RANGE: usize> {
     value: Column<Advice>,
     q_range_check: Selector,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt, const RANGE: usize> RangeCheckConfig<F, RANGE> {
+impl<F: PrimeField, const RANGE: usize> RangeCheckConfig<F, RANGE> {
     fn configure(
         meta: &mut ConstraintSystem<F>,
         q_range_check: Selector,
@@ -44,7 +44,7 @@ impl<F: FieldExt, const RANGE: usize> RangeCheckConfig<F, RANGE> {
                     // We do value.clone() above to initialize the types correctly. Since we want it to check 0 equality, it doesn't really matter what it is
                     |acc: halo2_proofs::plonk::Expression<F>, i| {
                         acc * (value.clone()
-                            - halo2_proofs::plonk::Expression::Constant(F::from(i as u64)))
+                            - halo2_proofs::plonk::Expression::Constant(F::from_u128(i as u128)))
                     },
                 )
             };
@@ -55,12 +55,12 @@ impl<F: FieldExt, const RANGE: usize> RangeCheckConfig<F, RANGE> {
 }
 #[derive(Clone, Copy, Debug)]
 
-struct RangeCheckChip<F: FieldExt, const RANGE: usize> {
+struct RangeCheckChip<F: PrimeField, const RANGE: usize> {
     config: RangeCheckConfig<F, RANGE>,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt, const RANGE: usize> RangeCheckChip<F, RANGE> {
+impl<F: PrimeField, const RANGE: usize> RangeCheckChip<F, RANGE> {
     fn construct(config: RangeCheckConfig<F, RANGE>) -> Self {
         Self {
             config,
@@ -95,11 +95,11 @@ impl<F: FieldExt, const RANGE: usize> RangeCheckChip<F, RANGE> {
 }
 
 #[derive(Debug, Default)]
-struct RangeCheckCircuit<F: FieldExt, const RANGE: usize> {
+struct RangeCheckCircuit<F: PrimeField, const RANGE: usize> {
     value: Value<F>,
 }
 
-impl<F: FieldExt, const RANGE: usize> Circuit<F> for RangeCheckCircuit<F, RANGE> {
+impl<F: PrimeField, const RANGE: usize> Circuit<F> for RangeCheckCircuit<F, RANGE> {
     type Config = RangeCheckConfig<F, RANGE>;
     type FloorPlanner = V1;
 
