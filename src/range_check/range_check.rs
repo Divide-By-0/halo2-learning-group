@@ -182,9 +182,8 @@ mod tests {
             .titled("Range Chip Vanilla Layout", ("sans-serif", 60))
             .unwrap();
 
-        let circuit = MyCircuit::<Fp, 8, 256> {
+        let circuit = RangeCheckCircuit::<Fp, 8> {
             value: Value::unknown(),
-            lookup_value: Value::unknown(),
         };
         halo2_proofs::dev::CircuitLayout::default()
             .render(9, &circuit, &root)
