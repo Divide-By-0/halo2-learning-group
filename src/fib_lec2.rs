@@ -155,6 +155,9 @@ impl<F: FieldExt> FibonacciChip<F> {
     }
 }
 
+// Note that the values in Circuit can be anything -- options, values, u64s, arbitrary objects, whatever.
+// As long as it's converted to the appropriate field elements in the assign functions called from synthesize, it's fine
+// Recall that circuits can call multiple chips in configure if they'd like!
 #[derive(Default)]
 struct FibonacciCircuit<F: FieldExt> {
     pub a: Option<F>,
@@ -178,6 +181,8 @@ impl<F: FieldExt> Circuit<F> for FibonacciCircuit<F> {
         let col_b: Column<Advice> = meta.advice_column();
         let col_c: Column<Advice> = meta.advice_column();
         let instance = meta.instance_column();
+        // One reason to configure with columns that are initialized in the Circuit instead of the Chip
+        // Is that you might want to share these columns between many chips -- it's easy to just pass the same column into both
         FibonacciChip::configure(meta, [col_a, col_b, col_c], [instance])
     }
 

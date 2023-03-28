@@ -85,6 +85,10 @@ impl<F: PrimeField> DecomposeRangeCheckConfig<F> {
             let value = meta.query_advice(value, Rotation::cur());
             let mut decomposed_values = vec![];
             let decomposed_parts = RANGE / LOOKUP_RANGE;
+
+            // Because we rotate up to 8 times here, this gate adds a lot of overhead.
+            // It would be much more efficient to also have a prefix sum at each step,
+            // and only cover 1-2 different rotations instead per constraint
             for i in 0..decomposed_parts {
                 decomposed_values.push(meta.query_advice(value_decomposed, Rotation(i as i32)));
             }
